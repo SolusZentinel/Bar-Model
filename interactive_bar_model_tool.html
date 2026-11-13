@@ -1,0 +1,2155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interactive Bar Model — White Rose Maths Style</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    * {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    input, textarea, select {
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    body {
+      background-color: #f1f5f9;
+      color: #1e293b;
+      overflow-x: hidden;
+    }
+
+    /* Subtle dot grid for interactive whiteboard canvas */
+    .canvas-dot-grid {
+      background-color: #ffffff;
+      background-image: radial-gradient(#cbd5e1 1.15px, transparent 1.15px);
+      background-size: 22px 22px;
+    }
+
+    /* Diagonal subtraction / "take away" hatch overlay */
+    .hatch-overlay {
+      background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(15, 23, 42, 0.22),
+        rgba(15, 23, 42, 0.22) 6px,
+        transparent 6px,
+        transparent 14px
+      );
+    }
+
+    /* Bar segment styling */
+    .bar-segment {
+      position: relative;
+      transition: background-color 0.18s ease, box-shadow 0.15s ease, transform 0.12s ease;
+    }
+
+    .bar-segment.is-selected {
+      box-shadow: 0 0 0 3px #0f172a, 0 8px 18px rgba(15, 23, 42, 0.18);
+      z-index: 15;
+    }
+
+    /* Resize divider handles between segments & at row end */
+    .resize-handle {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 14px;
+      margin-left: -7px;
+      cursor: col-resize;
+      z-index: 25;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .resize-handle::after {
+      content: '';
+      width: 4px;
+      height: 28px;
+      border-radius: 9999px;
+      background-color: rgba(15, 23, 42, 0.28);
+      transition: background-color 0.15s ease, transform 0.15s ease;
+    }
+
+    .resize-handle:hover::after,
+    .resize-handle.active::after {
+      background-color: #0284c7;
+      transform: scaleY(1.25);
+    }
+
+    /* End-of-row resize handle */
+    .row-end-handle {
+      position: absolute;
+      right: -8px;
+      top: 12%;
+      bottom: 12%;
+      width: 14px;
+      cursor: ew-resize;
+      z-index: 25;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .row-end-handle::after {
+      content: '';
+      width: 5px;
+      height: 30px;
+      border-radius: 9999px;
+      background-color: #64748b;
+      border: 1px solid #ffffff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      transition: all 0.15s ease;
+    }
+
+    .row-end-handle:hover::after {
+      background-color: #0284c7;
+      transform: scale(1.15);
+    }
+
+    /* Print optimization */
+    @media print {
+      .no-print {
+        display: none !important;
+      }
+      body {
+        background: #ffffff !important;
+      }
+      #workspaceCard {
+        border: none !important;
+        box-shadow: none !important;
+      }
+    }
+
+    /* Smooth pop-in */
+    @keyframes popIn {
+      0% { transform: scale(0.95); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .animate-pop {
+      animation: popIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- TOP NAVIGATION & MODEL PRESET TOOLBAR -->
+  <header class="no-print bg-white border-b border-slate-200 shadow-xs sticky top-0 z-40">
+    <div class="max-w-[1640px] mx-auto px-3 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
+      
+      <!-- Brand / Title -->
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500 via-sky-500 to-indigo-600 flex items-center justify-center text-white font-black text-base shadow-xs">
+          BM
+        </div>
+        <div>
+          <h1 class="text-base sm:text-lg font-extrabold text-slate-800 tracking-tight leading-tight">
+            Bar Model Tool
+          </h1>
+          <p class="text-[11px] font-medium text-slate-500 hidden md:block">
+            White Rose Maths Style Visualiser
+          </p>
+        </div>
+      </div>
+
+      <!-- Template Presets (Quick Start) -->
+      <div class="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200" role="group" aria-label="Model Templates">
+        <button
+          id="tpl-partWhole"
+          onclick="loadTemplate('partWhole')"
+          class="tpl-btn px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white text-slate-800 shadow-2xs"
+        >
+          Part-Whole
+        </button>
+        <button
+          id="tpl-comparison"
+          onclick="loadTemplate('comparison')"
+          class="tpl-btn px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-600 hover:text-slate-900"
+        >
+          Comparison
+        </button>
+        <button
+          id="tpl-equalParts"
+          onclick="loadTemplate('equalParts')"
+          class="tpl-btn px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-600 hover:text-slate-900"
+        >
+          Equal Parts / Fractions
+        </button>
+        <button
+          id="tpl-blank"
+          onclick="loadTemplate('blank')"
+          class="tpl-btn px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-600 hover:text-slate-900"
+        >
+          Blank Canvas
+        </button>
+      </div>
+
+      <!-- Right Global Controls: Worked Examples, Undo/Redo, Print/Snapshot, Sound, Clear -->
+      <div class="flex items-center gap-1.5 sm:gap-2">
+        <!-- Worked Problem Examples Dropdown -->
+        <div class="relative">
+          <select
+            id="workedExampleSelect"
+            onchange="applyWorkedExample(this.value)"
+            aria-label="Worked Word Problem Examples"
+            class="bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 text-xs font-bold rounded-xl px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer transition"
+          >
+            <option value="">Worked Examples...</option>
+            <option value="ex1">1. Part-Whole Addition & Subtraction</option>
+            <option value="ex2">2. Comparison Difference (Stickers)</option>
+            <option value="ex3">3. Multi-Step Word Problem</option>
+            <option value="ex4">4. Fractions of an Amount (3/5 of 45)</option>
+            <option value="ex5">5. Ratio Sharing (3 : 2)</option>
+          </select>
+        </div>
+
+        <!-- Undo -->
+        <button
+          id="btnUndo"
+          onclick="undo()"
+          disabled
+          title="Undo (Ctrl+Z)"
+          class="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-40 disabled:pointer-events-none text-slate-700 border border-slate-200 transition"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+          </svg>
+        </button>
+
+        <!-- Redo -->
+        <button
+          id="btnRedo"
+          onclick="redo()"
+          disabled
+          title="Redo (Ctrl+Y)"
+          class="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-40 disabled:pointer-events-none text-slate-700 border border-slate-200 transition"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3" />
+          </svg>
+        </button>
+
+        <!-- Snapshot / Print -->
+        <button
+          onclick="exportSnapshot()"
+          title="Export PNG Snapshot"
+          class="px-2.5 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-bold flex items-center gap-1.5 transition"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+          </svg>
+          <span class="hidden sm:inline">Snapshot</span>
+        </button>
+
+        <!-- Print -->
+        <button
+          onclick="window.print()"
+          title="Print Worksheet / Board"
+          class="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition hidden md:inline-flex"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
+          </svg>
+        </button>
+
+        <!-- Sound Toggle -->
+        <button
+          onclick="toggleSound()"
+          title="Toggle Sound Effects"
+          class="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition"
+        >
+          <svg id="iconSoundOn" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+          </svg>
+          <svg id="iconSoundOff" class="w-4 h-4 hidden text-slate-400" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 9.75L19.5 12m0 0l2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+          </svg>
+        </button>
+
+        <!-- Clear Board -->
+        <button
+          onclick="clearBoard()"
+          title="Clear Board"
+          class="px-2.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1 transition"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+          </svg>
+          <span class="hidden sm:inline">Clear</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- SECONDARY CLASSROOM ACTION RIBBON -->
+    <div class="bg-slate-50 border-t border-slate-200/80 px-3 sm:px-6 py-2">
+      <div class="max-w-[1640px] mx-auto flex flex-wrap items-center justify-between gap-2.5">
+        
+        <!-- Left: Sizing Mode + Brackets + Hide/Reveal Controls -->
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- Proportional vs Manual Resize Toggle -->
+          <div class="bg-white p-0.5 rounded-xl border border-slate-300 flex items-center shadow-2xs" title="Switch between automatic value-proportional widths or freehand manual drag resizing">
+            <button
+              id="btnModeProportional"
+              onclick="setSizingMode('proportional')"
+              class="px-2.5 py-1 rounded-lg text-xs font-bold transition bg-sky-600 text-white"
+            >
+              Proportional
+            </button>
+            <button
+              id="btnModeManual"
+              onclick="setSizingMode('manual')"
+              class="px-2.5 py-1 rounded-lg text-xs font-bold transition text-slate-600 hover:text-slate-900"
+            >
+              Manual Resize
+            </button>
+          </div>
+
+          <!-- Brackets & Difference Indicators -->
+          <button
+            id="btnTopBrace"
+            onclick="toggleFlag('showTopBrace')"
+            class="px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-xs font-bold text-slate-700 transition"
+          >
+            Top Brace { }
+          </button>
+          <button
+            id="btnBottomBrace"
+            onclick="toggleFlag('showBottomBrace')"
+            class="px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-xs font-bold text-slate-700 transition"
+          >
+            Bottom Brace { }
+          </button>
+          <button
+            id="btnDiffBracket"
+            onclick="toggleFlag('showDiffBracket')"
+            class="px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-xs font-bold text-slate-700 transition"
+          >
+            Difference Bracket
+          </button>
+
+          <!-- Global Hide / Show Values (Question Mode) -->
+          <div class="flex items-center gap-1 bg-white px-1.5 py-1 rounded-xl border border-slate-300">
+            <span class="text-[11px] font-bold text-slate-400 px-1 hidden lg:inline">Values:</span>
+            <button
+              onclick="setAllHidden(false)"
+              class="px-2 py-0.5 rounded-lg hover:bg-emerald-50 text-emerald-700 text-xs font-bold transition"
+              title="Reveal all values"
+            >
+              Show All
+            </button>
+            <button
+              onclick="setAllHidden(true)"
+              class="px-2 py-0.5 rounded-lg hover:bg-amber-50 text-amber-800 text-xs font-bold transition"
+              title="Hide all values as ?"
+            >
+              Hide All (?)
+            </button>
+            <button
+              onclick="hideWholeRow()"
+              class="px-2 py-0.5 rounded-lg hover:bg-indigo-50 text-indigo-700 text-xs font-bold transition"
+              title="Hide the top row as ?"
+            >
+              Hide Top
+            </button>
+          </div>
+        </div>
+
+        <!-- Right: Word Problem Banner Toggle & Whiteboard Pen Annotation Overlay -->
+        <div class="flex items-center gap-2">
+          <button
+            id="btnTogglePrompt"
+            onclick="toggleFlag('showPrompt')"
+            class="px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-xs font-bold text-slate-700 flex items-center gap-1.5 transition"
+          >
+            <svg class="w-3.5 h-3.5 text-amber-600" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+            </svg>
+            <span>Word Problem</span>
+          </button>
+
+          <!-- Annotation Pen Controls -->
+          <div class="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-300 shadow-2xs">
+            <button
+              id="btnPenTool"
+              onclick="togglePenMode()"
+              class="px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 text-slate-700 hover:bg-slate-100 transition"
+              title="Draw circles, arrows, or notes over the bar model"
+            >
+              <svg class="w-3.5 h-3.5 text-rose-600" fill="none" stroke="currentColor" stroke-width="2.3" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+              </svg>
+              <span id="penBtnLabel">Pen Off</span>
+            </button>
+
+            <div id="penPalette" class="hidden items-center gap-1 pl-1 border-l border-slate-200">
+              <button onclick="setPenColor('#e11d48')" class="w-4 h-4 rounded-full bg-rose-600 ring-2 ring-offset-1 ring-slate-400" title="Red Pen"></button>
+              <button onclick="setPenColor('#0284c7')" class="w-4 h-4 rounded-full bg-sky-600" title="Blue Pen"></button>
+              <button onclick="setPenColor('#059669')" class="w-4 h-4 rounded-full bg-emerald-600" title="Green Pen"></button>
+              <button onclick="setPenColor('#0f172a')" class="w-4 h-4 rounded-full bg-slate-900" title="Black Pen"></button>
+              <button onclick="toggleEraser()" id="btnPenEraser" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 hover:bg-slate-200">Eraser</button>
+              <button onclick="clearInk()" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 hover:bg-rose-100">Clear Ink</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE CONTAINER -->
+  <main class="flex-1 flex flex-col max-w-[1640px] w-full mx-auto px-3 sm:px-6 py-4 gap-3.5">
+
+    <!-- OPTIONAL EDITABLE WORD PROBLEM BANNER -->
+    <section
+      id="wordProblemBanner"
+      class="bg-amber-50/90 border border-amber-200 rounded-2xl p-3 sm:px-5 sm:py-3.5 shadow-2xs flex items-start justify-between gap-3"
+    >
+      <div class="flex items-start gap-3 flex-1">
+        <span class="px-2.5 py-1 rounded-lg bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider shrink-0 mt-0.5">
+          Problem
+        </span>
+        <textarea
+          id="problemTextInput"
+          rows="2"
+          oninput="state.problemText = this.value"
+          placeholder="Type or paste a classroom word problem here..."
+          class="w-full bg-transparent text-slate-800 font-semibold text-sm sm:text-base leading-snug focus:outline-none resize-none"
+        >Sam has 24 stickers. Zara has 15 stickers. How many stickers do they have altogether?</textarea>
+      </div>
+      <button
+        onclick="toggleFlag('showPrompt')"
+        class="no-print text-amber-700 hover:text-amber-950 p-1 rounded-lg text-xs font-bold shrink-0"
+        title="Hide Word Problem Banner"
+      >
+        ✕
+      </button>
+    </section>
+
+    <!-- INTERACTIVE BAR MODEL CANVAS CARD -->
+    <section
+      id="workspaceCard"
+      class="relative flex-1 min-h-[420px] rounded-2xl border border-slate-200 shadow-sm canvas-dot-grid flex flex-col justify-between overflow-hidden"
+    >
+      <!-- Drawing Annotation Canvas Overlay -->
+      <canvas
+        id="inkCanvas"
+        class="absolute inset-0 w-full h-full z-30 pointer-events-none touch-none"
+      ></canvas>
+
+      <!-- Pen Mode Floating Notice -->
+      <div
+        id="penModeBanner"
+        class="no-print hidden absolute top-3 right-3 z-40 bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md flex items-center gap-2"
+      >
+        <span class="w-2 h-2 rounded-full bg-white animate-ping"></span>
+        <span>Annotation Pen Active — Draw anywhere on the board</span>
+        <button onclick="togglePenMode()" class="underline ml-1 hover:text-rose-100">Done</button>
+      </div>
+
+      <!-- Bar Model Render Area -->
+      <div
+        id="barModelStage"
+        onclick="handleStageClick(event)"
+        class="flex-1 w-full px-4 sm:px-10 py-8 flex flex-col justify-center overflow-x-auto"
+      >
+        <div id="barsContainer" class="w-full max-w-[1160px] mx-auto flex flex-col gap-3">
+          <!-- Rows, curly braces, segments, and difference brackets rendered here -->
+        </div>
+      </div>
+
+      <!-- Bottom Quick-Add Row Bar inside Workspace -->
+      <div class="no-print bg-slate-50/95 backdrop-blur-xs border-t border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 z-20">
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            onclick="addRow('single')"
+            class="px-3 py-1.5 rounded-xl bg-white hover:bg-sky-50 text-slate-800 hover:text-sky-700 border border-slate-300 text-xs font-bold flex items-center gap-1.5 shadow-2xs transition active:scale-95"
+          >
+            <span class="text-sky-600 font-black text-sm">+</span> Add Bar Row
+          </button>
+
+          <button
+            onclick="addRow('split2')"
+            class="px-3 py-1.5 rounded-xl bg-white hover:bg-teal-50 text-slate-800 hover:text-teal-700 border border-slate-300 text-xs font-bold flex items-center gap-1.5 shadow-2xs transition active:scale-95"
+          >
+            <span class="text-teal-600 font-black text-sm">+</span> Add 2-Part Bar
+          </button>
+
+          <button
+            onclick="addRow('split4')"
+            class="px-3 py-1.5 rounded-xl bg-white hover:bg-indigo-50 text-slate-800 hover:text-indigo-700 border border-slate-300 text-xs font-bold flex items-center gap-1.5 shadow-2xs transition active:scale-95"
+          >
+            <span class="text-indigo-600 font-black text-sm">+</span> Add 4-Part Bar
+          </button>
+        </div>
+
+        <div class="text-[11px] font-medium text-slate-500 hidden md:flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-sky-500 inline-block"></span>
+          <span>Click any bar to edit value/label, split into equal parts, or change color. Hold <strong>Shift + Click</strong> to select multiple adjacent parts to merge.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTEXTUAL SEGMENT & ROW INSPECTOR DOCK -->
+    <section
+      id="inspectorDock"
+      class="no-print bg-white rounded-2xl border border-slate-200 shadow-sm p-3 sm:p-4 transition-all"
+    >
+      <!-- Empty Selection Prompt -->
+      <div id="inspectorEmpty" class="flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm text-slate-500 py-1">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-bold">
+            ✎
+          </div>
+          <span>
+            <strong class="text-slate-700">Select any bar segment</strong> on the canvas to edit its value, text label, color, hide as <code class="px-1.5 py-0.5 bg-slate-100 rounded font-bold text-slate-700">?</code>, or split into equal parts.
+          </span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-bold text-slate-400">Row Label Column:</span>
+          <button
+            id="btnToggleRowLabels"
+            onclick="toggleFlag('showRowLabels')"
+            class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition"
+          >
+            Visible
+          </button>
+        </div>
+      </div>
+
+      <!-- Active Segment Editor -->
+      <div id="inspectorActive" class="hidden flex-col lg:flex-row lg:items-center justify-between gap-4">
+        
+        <!-- Left: Value & Label Inputs + Eye Toggle -->
+        <div class="flex flex-wrap items-center gap-2.5">
+          <div class="flex flex-col">
+            <label for="inputSegValue" class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-0.5">
+              Value (e.g. 24, £5, x, ?)
+            </label>
+            <div class="flex items-center gap-1">
+              <input
+                id="inputSegValue"
+                type="text"
+                oninput="updateSelectedSegment('value', this.value)"
+                placeholder="Value"
+                class="w-28 sm:w-32 px-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none text-sm font-extrabold text-slate-800"
+              />
+              <button
+                id="btnToggleSegHidden"
+                onclick="toggleSelectedHidden()"
+                title="Hide or Reveal this segment's value as ?"
+                class="p-2 rounded-xl border border-slate-300 bg-white hover:bg-amber-50 text-slate-700 transition"
+              >
+                <svg id="segEyeOpen" class="w-4 h-4 text-sky-600" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <svg id="segEyeClosed" class="w-4 h-4 text-amber-600 hidden" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex flex-col">
+            <label for="inputSegLabel" class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-0.5">
+              Part Label (Optional)
+            </label>
+            <input
+              id="inputSegLabel"
+              type="text"
+              oninput="updateSelectedSegment('label', this.value)"
+              placeholder="e.g. Spent, Sam..."
+              class="w-32 sm:w-40 px-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none text-sm font-semibold text-slate-800"
+            />
+          </div>
+
+          <div class="flex flex-col">
+            <label for="inputRowTitle" class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-0.5">
+              Row Name
+            </label>
+            <input
+              id="inputRowTitle"
+              type="text"
+              oninput="updateSelectedRowTitle(this.value)"
+              placeholder="e.g. Whole, Sam"
+              class="w-28 sm:w-32 px-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none text-sm font-bold text-slate-700"
+            />
+          </div>
+        </div>
+
+        <!-- Middle: White Rose Color Swatches + Subtraction Hatch Toggle -->
+        <div class="flex flex-col">
+          <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1">
+            Color & Subtraction Shading
+          </span>
+          <div class="flex flex-wrap items-center gap-1.5" id="swatchContainer">
+            <!-- Swatches injected by JS -->
+          </div>
+        </div>
+
+        <!-- Right: Split, Merge, Add Segment & Delete Actions -->
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- Split into N equal parts -->
+          <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <span class="text-[11px] font-extrabold text-slate-500 px-1.5">Split:</span>
+            <button onclick="splitSelectedSegment(2)" class="px-2 py-1 rounded-lg bg-white hover:bg-sky-50 text-xs font-extrabold text-slate-700 border border-slate-200 shadow-2xs transition" title="Split into 2 equal parts">÷2</button>
+            <button onclick="splitSelectedSegment(3)" class="px-2 py-1 rounded-lg bg-white hover:bg-sky-50 text-xs font-extrabold text-slate-700 border border-slate-200 shadow-2xs transition ml-1" title="Split into 3 equal parts">÷3</button>
+            <button onclick="splitSelectedSegment(4)" class="px-2 py-1 rounded-lg bg-white hover:bg-sky-50 text-xs font-extrabold text-slate-700 border border-slate-200 shadow-2xs transition ml-1" title="Split into 4 equal parts">÷4</button>
+            <button onclick="splitSelectedSegment(5)" class="px-2 py-1 rounded-lg bg-white hover:bg-sky-50 text-xs font-extrabold text-slate-700 border border-slate-200 shadow-2xs transition ml-1" title="Split into 5 equal parts">÷5</button>
+            <button onclick="splitSelectedSegment(10)" class="px-2 py-1 rounded-lg bg-white hover:bg-sky-50 text-xs font-extrabold text-slate-700 border border-slate-200 shadow-2xs transition ml-1" title="Split into 10 equal parts">÷10</button>
+            <select
+              onchange="if(this.value){ splitSelectedSegment(parseInt(this.value)); this.value=''; }"
+              aria-label="Custom split parts"
+              class="ml-1 px-1.5 py-1 rounded-lg bg-white text-xs font-bold text-slate-700 border border-slate-200 cursor-pointer"
+            >
+              <option value="">More</option>
+              <option value="6">÷6</option>
+              <option value="7">÷7</option>
+              <option value="8">÷8</option>
+              <option value="9">÷9</option>
+              <option value="12">÷12</option>
+            </select>
+          </div>
+
+          <!-- Merge Adjacent Selected Segments -->
+          <button
+            id="btnMergeSegments"
+            onclick="mergeSelectedSegments()"
+            class="hidden px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition"
+          >
+            Merge Selected
+          </button>
+
+          <!-- Insert Part Next to Selected -->
+          <button
+            onclick="insertSegmentAfterSelected()"
+            title="Add another part to this row"
+            class="px-2.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition"
+          >
+            + Part
+          </button>
+
+          <!-- Delete Segment or Row -->
+          <button
+            onclick="deleteSelectedSegment()"
+            title="Delete selected bar part"
+            class="px-2.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition"
+          >
+            Delete Part
+          </button>
+
+          <button
+            onclick="deleteSelectedRow()"
+            title="Delete entire bar row"
+            class="px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 border border-slate-200 text-xs font-bold transition"
+          >
+            Delete Row
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Toast Notification -->
+  <div
+    id="toastBanner"
+    class="no-print fixed bottom-24 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs sm:text-sm font-bold px-4 py-2.5 rounded-full shadow-lg opacity-0 pointer-events-none transition-opacity duration-300 z-50"
+  >
+    Notification
+  </div>
+
+  <script>
+    /**
+     * ============================================================================
+     * WHITE ROSE STYLE ACCESSIBLE COLOR PALETTE
+     * ============================================================================
+     */
+    const SWATCHES = [
+      { id: 'teal', name: 'Teal', bg: '#14b8a6', border: '#0f766e', text: '#ffffff' },
+      { id: 'coral', name: 'Coral', bg: '#f43f5e', border: '#be123c', text: '#ffffff' },
+      { id: 'amber', name: 'Amber', bg: '#f59e0b', border: '#b45309', text: '#0f172a' },
+      { id: 'blue', name: 'Royal Blue', bg: '#0ea5e9', border: '#0369a1', text: '#ffffff' },
+      { id: 'purple', name: 'Purple', bg: '#8b5cf6', border: '#5b21b6', text: '#ffffff' },
+      { id: 'emerald', name: 'Emerald', bg: '#10b981', border: '#047857', text: '#ffffff' },
+      { id: 'white', name: 'Unshaded', bg: '#ffffff', border: '#475569', text: '#0f172a' }
+    ];
+
+    function getSwatch(id) {
+      return SWATCHES.find(s => s.id === id) || SWATCHES[0];
+    }
+
+    /**
+     * ============================================================================
+     * APPLICATION STATE
+     * ============================================================================
+     */
+    let uidCounter = 100;
+    function nextId(prefix = 'id') {
+      uidCounter += 1;
+      return `${prefix}_${uidCounter}`;
+    }
+
+    const state = {
+      template: 'partWhole',
+      sizingMode: 'proportional', // 'proportional' | 'manual'
+      showTopBrace: true,
+      showBottomBrace: false,
+      showDiffBracket: false,
+      showPrompt: true,
+      showRowLabels: true,
+      problemText: 'Sam has 24 stickers. Zara has 15 stickers. How many stickers do they have altogether?',
+      rows: [],
+      selectedRowId: null,
+      selectedSegIds: [], // Array of segment IDs in selectedRowId (supports Shift+Click multi-select for merging)
+      soundEnabled: true,
+      penMode: false,
+      penColor: '#e11d48',
+      penEraser: false,
+      history: [],
+      future: []
+    };
+
+    /**
+     * ============================================================================
+     * WEB AUDIO TACTILE SOUND EFFECTS
+     * ============================================================================
+     */
+    let audioCtx = null;
+
+    function playSound(type) {
+      if (!state.soundEnabled) return;
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        if (type === 'click') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(520, now);
+          osc.frequency.exponentialRampToValueAtTime(680, now + 0.05);
+          gain.gain.setValueAtTime(0.09, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+          osc.start(now);
+          osc.stop(now + 0.06);
+        } else if (type === 'split') {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(380, now);
+          osc.frequency.exponentialRampToValueAtTime(760, now + 0.14);
+          gain.gain.setValueAtTime(0.14, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+          osc.start(now);
+          osc.stop(now + 0.15);
+        } else if (type === 'remove') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(420, now);
+          osc.frequency.exponentialRampToValueAtTime(220, now + 0.09);
+          gain.gain.setValueAtTime(0.11, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+          osc.start(now);
+          osc.stop(now + 0.1);
+        }
+      } catch (e) {
+        // Ignore audio restrictions
+      }
+    }
+
+    function toggleSound() {
+      state.soundEnabled = !state.soundEnabled;
+      document.getElementById('iconSoundOn').classList.toggle('hidden', !state.soundEnabled);
+      document.getElementById('iconSoundOff').classList.toggle('hidden', state.soundEnabled);
+      if (state.soundEnabled) playSound('click');
+    }
+
+    /**
+     * ============================================================================
+     * UNDO / REDO HISTORY MANAGEMENT
+     * ============================================================================
+     */
+    function pushHistory() {
+      const snapshot = JSON.stringify({
+        rows: state.rows,
+        showTopBrace: state.showTopBrace,
+        showBottomBrace: state.showBottomBrace,
+        showDiffBracket: state.showDiffBracket,
+        sizingMode: state.sizingMode
+      });
+      state.history.push(snapshot);
+      if (state.history.length > 35) state.history.shift();
+      state.future = [];
+      updateUndoRedoButtons();
+    }
+
+    function undo() {
+      if (state.history.length === 0) return;
+      state.future.push(JSON.stringify({
+        rows: state.rows,
+        showTopBrace: state.showTopBrace,
+        showBottomBrace: state.showBottomBrace,
+        showDiffBracket: state.showDiffBracket,
+        sizingMode: state.sizingMode
+      }));
+      const prev = JSON.parse(state.history.pop());
+      Object.assign(state, prev);
+      state.selectedSegIds = [];
+      updateUndoRedoButtons();
+      playSound('remove');
+      renderAll();
+    }
+
+    function redo() {
+      if (state.future.length === 0) return;
+      state.history.push(JSON.stringify({
+        rows: state.rows,
+        showTopBrace: state.showTopBrace,
+        showBottomBrace: state.showBottomBrace,
+        showDiffBracket: state.showDiffBracket,
+        sizingMode: state.sizingMode
+      }));
+      const next = JSON.parse(state.future.pop());
+      Object.assign(state, next);
+      state.selectedSegIds = [];
+      updateUndoRedoButtons();
+      playSound('click');
+      renderAll();
+    }
+
+    function updateUndoRedoButtons() {
+      document.getElementById('btnUndo').disabled = state.history.length === 0;
+      document.getElementById('btnRedo').disabled = state.future.length === 0;
+    }
+
+    /**
+     * ============================================================================
+     * NUMERICAL PARSING FOR PROPORTIONAL SCALING
+     * ============================================================================
+     */
+    function parseNumericValue(valStr) {
+      if (valStr === null || valStr === undefined) return null;
+      const cleaned = String(valStr).trim().replace(/[£$€,]/g, '');
+      if (!cleaned || cleaned === '?') return null;
+
+      // Support simple fractions like "1/4" or "3/5"
+      if (/^\d+\s*\/\s*\d+$/.test(cleaned)) {
+        const [num, den] = cleaned.split('/').map(Number);
+        if (den !== 0) return num / den;
+      }
+
+      // Support algebraic coefficients like "3x" -> 3, "x" -> 1
+      const algMatch = cleaned.match(/^(\d*\.?\d+)?\s*[a-zA-Z]$/);
+      if (algMatch) {
+        return algMatch[1] ? parseFloat(algMatch[1]) : 1;
+      }
+
+      const num = parseFloat(cleaned);
+      return !isNaN(num) && num > 0 ? num : null;
+    }
+
+    function getRowTotalNumeric(row) {
+      let sum = 0;
+      let hasAnyNumeric = false;
+      row.segments.forEach(seg => {
+        const n = parseNumericValue(seg.value);
+        if (n !== null) {
+          sum += n;
+          hasAnyNumeric = true;
+        }
+      });
+      return hasAnyNumeric ? sum : null;
+    }
+
+    /**
+     * ============================================================================
+     * TEMPLATES & WORKED WORD PROBLEM PRESETS
+     * ============================================================================
+     */
+    function loadTemplate(tplName, skipHistory = false) {
+      if (!skipHistory) pushHistory();
+      state.template = tplName;
+      state.selectedRowId = null;
+      state.selectedSegIds = [];
+
+      // Update template pill UI
+      document.querySelectorAll('.tpl-btn').forEach(btn => {
+        btn.className = 'tpl-btn px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-600 hover:text-slate-900';
+      });
+      const activeBtn = document.getElementById(`tpl-${tplName}`);
+      if (activeBtn) {
+        activeBtn.className = 'tpl-btn px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white text-slate-800 shadow-2xs';
+      }
+
+      if (tplName === 'partWhole') {
+        state.sizingMode = 'proportional';
+        state.showTopBrace = true;
+        state.showBottomBrace = false;
+        state.showDiffBracket = false;
+        state.rows = [
+          {
+            id: nextId('row'),
+            title: 'Whole',
+            manualWidthPct: 100,
+            segments: [
+              { id: nextId('seg'), value: '39', label: 'Total Stickers', color: 'teal', hidden: true, hatched: false, weight: 39 }
+            ]
+          },
+          {
+            id: nextId('row'),
+            title: 'Parts',
+            manualWidthPct: 100,
+            segments: [
+              { id: nextId('seg'), value: '24', label: 'Sam', color: 'blue', hidden: false, hatched: false, weight: 24 },
+              { id: nextId('seg'), value: '15', label: 'Zara', color: 'amber', hidden: false, hatched: false, weight: 15 }
+            ]
+          }
+        ];
+      } else if (tplName === 'comparison') {
+        state.sizingMode = 'proportional';
+        state.showTopBrace = false;
+        state.showBottomBrace = false;
+        state.showDiffBracket = true;
+        state.rows = [
+          {
+            id: nextId('row'),
+            title: 'Sam',
+            manualWidthPct: 100,
+            segments: [
+              { id: nextId('seg'), value: '32', label: '', color: 'blue', hidden: false, hatched: false, weight: 32 }
+            ]
+          },
+          {
+            id: nextId('row'),
+            title: 'Zara',
+            manualWidthPct: 62.5,
+            segments: [
+              { id: nextId('seg'), value: '20', label: '', color: 'coral', hidden: false, hatched: false, weight: 20 }
+            ]
+          }
+        ];
+      } else if (tplName === 'equalParts') {
+        state.sizingMode = 'proportional';
+        state.showTopBrace = true;
+        state.showBottomBrace = false;
+        state.showDiffBracket = false;
+        state.rows = [
+          {
+            id: nextId('row'),
+            title: 'Whole = 1',
+            manualWidthPct: 100,
+            segments: [
+              { id: nextId('seg'), value: '1/5', label: '', color: 'purple', hidden: false, hatched: false, weight: 1 },
+              { id: nextId('seg'), value: '1/5', label: '', color: 'purple', hidden: false, hatched: false, weight: 1 },
+              { id: nextId('seg'), value: '1/5', label: '', color: 'purple', hidden: false, hatched: false, weight: 1 },
+              { id: nextId('seg'), value: '1/5', label: '', color: 'white', hidden: false, hatched: false, weight: 1 },
+              { id: nextId('seg'), value: '1/5', label: '', color: 'white', hidden: false, hatched: false, weight: 1 }
+            ]
+          }
+        ];
+      } else if (tplName === 'blank') {
+        state.sizingMode = 'manual';
+        state.showTopBrace = false;
+        state.showBottomBrace = false;
+        state.showDiffBracket = false;
+        state.rows = [
+          {
+            id: nextId('row'),
+            title: 'Bar 1',
+            manualWidthPct: 80,
+            segments: [
+              { id: nextId('seg'), value: '?', label: '', color: 'white', hidden: false, hatched: false, weight: 1 }
+            ]
+          }
+        ];
+      }
+
+      playSound('click');
+      renderAll();
+    }
+
+    function applyWorkedExample(key) {
+      if (!key) return;
+      pushHistory();
+      state.selectedRowId = null;
+      state.selectedSegIds = [];
+      state.showPrompt = true;
+
+      if (key === 'ex1') {
+        state.problemText = 'Sam has 24 stickers. Zara has 15 stickers. How many stickers do they have altogether?';
+        loadTemplate('partWhole', true);
+      } else if (key === 'ex2') {
+        state.problemText = 'Sam has 32 marbles. Zara has 20 marbles. How many more marbles does Sam have than Zara?';
+        loadTemplate('comparison', true);
+      } else if (key === 'ex3') {
+        state.problemText = 'A ribbon is 60 cm long. Leo cuts off 18 cm and then cuts off another 25 cm. How much ribbon is left?';
+        state.sizingMode = 'proportional';
+        state.showTopBrace = true;
+        state.showBottomBrace = false;
+        state.showDiffBracket = false;
+        state.rows = [
+          {
+            id: nextId('row'),
+            title: 'Total',
+            manualWidthPct: 100,
+            segments: [
+              { id: nextId('seg'), value: '60 cm', label: 'Whole Ribbon', color: 'teal', hidden: false, hatched: false, weight: 60 }
+            ]
+          },
+          {
+            id: nextId('row'),
+            title: 'Cuts',
+            manualWidthPct: 100,
+            segments: [
+              { id: nextId('seg'), value: '18 cm', label: 'Cut 1', color: 'coral', hidden: false, hatched: true, weight: 18 },
+              { id: nextId('seg'), value: '25 cm', label: 'Cut 2', color: 'coral', hidden: false, hatched: true, weight: 25 },
+              { id: nextId('seg'), value: '17 cm', label: 'Left', color: 'emerald', hidden: true, hatched: false, weight: 17 }
+            ]
+          }
+        ];
+      } else if (key === 'ex4') {
+        state.problemText = 'Find 3/5 of £45. Each of the 5 equal parts represents 1/5 of the whole.';
+        state.sizingMode = 'proportional';
+        state.showTopBrace = true;
+        state.showBottomBrace = true;
+        state.showDiffBracket = false;
+        state.rows = [
+          {
+            id: nextId('row'),
+            title: '£45',
+            manualWidthPct: 100,
+            segments: [
+              { id: nextId('seg'), value: '£9', label: '1/5', color: 'blue', hidden: false, hatched: false, weight: 9 },
+              { id: nextId('seg'), value: '£9', label: '1/5', color: 'blue', hidden: false, hatched: false, weight: 9 },
+              { id: nextId('seg'), value: '£9', label: '1/5', color: 'blue', hidden: false, hatched: false, weight: 9 },
+              { id: nextId('seg'), value: '£9', label: '1/5', color: 'white', hidden: false, hatched: false, weight: 9 },
+              { id: nextId('seg'), value: '£9', label: '1/5', color: 'white', hidden: false, hatched: false, weight: 9 }
+            ]
+          }
+        ];
+      } else if (key === 'ex5') {
+        state.problemText = 'Aisha and Ben share £40 in the ratio 3 : 2. How much money does each person receive?';
+        state.sizingMode = 'proportional';
+        state.showTopBrace = true;
+        state.showBottomBrace = false;
+        state.showDiffBracket = false;
+        state.rows = [
+          {
+            id: nextId('row'),
+            title: 'Aisha (3)',
+            manualWidthPct: 60,
+            segments: [
+              { id: nextId('seg'), value: '£8', label: '', color: 'amber', hidden: false, hatched: false, weight: 8 },
+              { id: nextId('seg'), value: '£8', label: '', color: 'amber', hidden: false, hatched: false, weight: 8 },
+              { id: nextId('seg'), value: '£8', label: '', color: 'amber', hidden: false, hatched: false, weight: 8 }
+            ]
+          },
+          {
+            id: nextId('row'),
+            title: 'Ben (2)',
+            manualWidthPct: 40,
+            segments: [
+              { id: nextId('seg'), value: '£8', label: '', color: 'purple', hidden: false, hatched: false, weight: 8 },
+              { id: nextId('seg'), value: '£8', label: '', color: 'purple', hidden: false, hatched: false, weight: 8 }
+            ]
+          }
+        ];
+      }
+
+      document.getElementById('workedExampleSelect').value = '';
+      playSound('split');
+      renderAll();
+    }
+
+    /**
+     * ============================================================================
+     * BAR ROW & SEGMENT OPERATIONS
+     * ============================================================================
+     */
+    function addRow(kind = 'single') {
+      pushHistory();
+      const idx = state.rows.length + 1;
+      const defaultColor = SWATCHES[(idx - 1) % 6].id;
+
+      let segments = [];
+      if (kind === 'single') {
+        segments = [{ id: nextId('seg'), value: '10', label: '', color: defaultColor, hidden: false, hatched: false, weight: 10 }];
+      } else if (kind === 'split2') {
+        segments = [
+          { id: nextId('seg'), value: '5', label: '', color: 'blue', hidden: false, hatched: false, weight: 5 },
+          { id: nextId('seg'), value: '5', label: '', color: 'amber', hidden: false, hatched: false, weight: 5 }
+        ];
+      } else if (kind === 'split4') {
+        segments = Array.from({ length: 4 }, () => ({
+          id: nextId('seg'), value: '5', label: '', color: 'teal', hidden: false, hatched: false, weight: 5
+        }));
+      }
+
+      const newRow = {
+        id: nextId('row'),
+        title: `Bar ${idx}`,
+        manualWidthPct: 100,
+        segments
+      };
+
+      state.rows.push(newRow);
+      state.selectedRowId = newRow.id;
+      state.selectedSegIds = [segments[0].id];
+      playSound('click');
+      renderAll();
+    }
+
+    function selectSegment(event, rowId, segId) {
+      event.stopPropagation();
+      if (state.penMode) return;
+
+      // Support Shift + Click to multi-select adjacent segments in the same row for merging
+      if (event.shiftKey && state.selectedRowId === rowId && state.selectedSegIds.length > 0) {
+        const row = state.rows.find(r => r.id === rowId);
+        if (row) {
+          const allIds = row.segments.map(s => s.id);
+          const anchorIdx = allIds.indexOf(state.selectedSegIds[0]);
+          const targetIdx = allIds.indexOf(segId);
+          if (anchorIdx !== -1 && targetIdx !== -1) {
+            const start = Math.min(anchorIdx, targetIdx);
+            const end = Math.max(anchorIdx, targetIdx);
+            state.selectedSegIds = allIds.slice(start, end + 1);
+            playSound('click');
+            renderAll();
+            return;
+          }
+        }
+      }
+
+      state.selectedRowId = rowId;
+      state.selectedSegIds = [segId];
+      playSound('click');
+      renderAll();
+    }
+
+    function handleStageClick(event) {
+      if (event.target.id === 'barModelStage' || event.target.id === 'barsContainer') {
+        state.selectedRowId = null;
+        state.selectedSegIds = [];
+        renderAll();
+      }
+    }
+
+    function getPrimarySelected() {
+      if (!state.selectedRowId || state.selectedSegIds.length === 0) return null;
+      const row = state.rows.find(r => r.id === state.selectedRowId);
+      if (!row) return null;
+      const seg = row.segments.find(s => s.id === state.selectedSegIds[0]);
+      if (!seg) return null;
+      return { row, seg };
+    }
+
+    function updateSelectedSegment(field, val) {
+      const sel = getPrimarySelected();
+      if (!sel) return;
+      sel.seg[field] = val;
+
+      // Update proportional weight if value is numeric
+      if (field === 'value') {
+        const parsed = parseNumericValue(val);
+        if (parsed !== null) {
+          sel.seg.weight = parsed;
+        }
+      }
+      renderCanvasOnly();
+    }
+
+    function updateSelectedRowTitle(val) {
+      const sel = getPrimarySelected();
+      if (!sel) return;
+      sel.row.title = val;
+      renderCanvasOnly();
+    }
+
+    function toggleSelectedHidden() {
+      const sel = getPrimarySelected();
+      if (!sel) return;
+      pushHistory();
+      state.selectedSegIds.forEach(id => {
+        const s = sel.row.segments.find(item => item.id === id);
+        if (s) s.hidden = !s.hidden;
+      });
+      playSound('click');
+      renderAll();
+    }
+
+    function setSelectedColor(colorId) {
+      const sel = getPrimarySelected();
+      if (!sel) return;
+      pushHistory();
+      state.selectedSegIds.forEach(id => {
+        const s = sel.row.segments.find(item => item.id === id);
+        if (s) s.color = colorId;
+      });
+      playSound('click');
+      renderAll();
+    }
+
+    function toggleSelectedHatched() {
+      const sel = getPrimarySelected();
+      if (!sel) return;
+      pushHistory();
+      state.selectedSegIds.forEach(id => {
+        const s = sel.row.segments.find(item => item.id === id);
+        if (s) s.hatched = !s.hatched;
+      });
+      playSound('click');
+      renderAll();
+    }
+
+    /**
+     * Split a segment into N equal parts
+     */
+    function splitSelectedSegment(partsCount) {
+      const sel = getPrimarySelected();
+      if (!sel || partsCount < 2) return;
+      pushHistory();
+
+      const { row, seg } = sel;
+      const idx = row.segments.findIndex(s => s.id === seg.id);
+      const numericVal = parseNumericValue(seg.value);
+      const childWeight = seg.weight / partsCount;
+
+      let childValueStr = seg.value;
+      if (numericVal !== null && !String(seg.value).includes('/')) {
+        const divided = numericVal / partsCount;
+        // Format cleanly if evenly divisible
+        if (Number.isInteger(divided)) {
+          const prefix = String(seg.value).match(/^[£$€]/) ? String(seg.value)[0] : '';
+          childValueStr = `${prefix}${divided}`;
+        }
+      }
+
+      const newSegments = Array.from({ length: partsCount }, () => ({
+        id: nextId('seg'),
+        value: childValueStr,
+        label: seg.label,
+        color: seg.color,
+        hidden: seg.hidden,
+        hatched: seg.hatched,
+        weight: childWeight
+      }));
+
+      row.segments.splice(idx, 1, ...newSegments);
+      state.selectedSegIds = [newSegments[0].id];
+      playSound('split');
+      renderAll();
+      showToast(`Split into ${partsCount} equal parts`);
+    }
+
+    /**
+     * Merge 2 or more adjacent selected segments into 1
+     */
+    function mergeSelectedSegments() {
+      const sel = getPrimarySelected();
+      if (!sel || state.selectedSegIds.length < 2) return;
+      pushHistory();
+
+      const { row } = sel;
+      const indices = state.selectedSegIds
+        .map(id => row.segments.findIndex(s => s.id === id))
+        .filter(i => i !== -1)
+        .sort((a, b) => a - b);
+
+      if (indices.length < 2) return;
+      const start = indices[0];
+      const count = indices.length;
+      const toMerge = row.segments.slice(start, start + count);
+
+      let sumVal = 0;
+      let allNumeric = true;
+      let totalWeight = 0;
+
+      toMerge.forEach(s => {
+        totalWeight += s.weight;
+        const n = parseNumericValue(s.value);
+        if (n !== null && !String(s.value).includes('/')) {
+          sumVal += n;
+        } else {
+          allNumeric = false;
+        }
+      });
+
+      const first = toMerge[0];
+      const prefix = String(first.value).match(/^[£$€]/) ? String(first.value)[0] : '';
+      const mergedSeg = {
+        id: nextId('seg'),
+        value: allNumeric ? `${prefix}${Number(sumVal.toFixed(3))}` : first.value,
+        label: first.label,
+        color: first.color,
+        hidden: first.hidden,
+        hatched: first.hatched,
+        weight: totalWeight
+      };
+
+      row.segments.splice(start, count, mergedSeg);
+      state.selectedSegIds = [mergedSeg.id];
+      playSound('split');
+      renderAll();
+      showToast(`Merged ${count} parts`);
+    }
+
+    function insertSegmentAfterSelected() {
+      const sel = getPrimarySelected();
+      if (!sel) return;
+      pushHistory();
+      const { row, seg } = sel;
+      const idx = row.segments.findIndex(s => s.id === seg.id);
+      const nextColor = SWATCHES[(row.segments.length) % 6].id;
+
+      const newSeg = {
+        id: nextId('seg'),
+        value: '10',
+        label: '',
+        color: nextColor,
+        hidden: false,
+        hatched: false,
+        weight: 10
+      };
+      row.segments.splice(idx + 1, 0, newSeg);
+      state.selectedSegIds = [newSeg.id];
+      playSound('click');
+      renderAll();
+    }
+
+    function deleteSelectedSegment() {
+      const sel = getPrimarySelected();
+      if (!sel) return;
+      pushHistory();
+      const { row } = sel;
+      row.segments = row.segments.filter(s => !state.selectedSegIds.includes(s.id));
+
+      if (row.segments.length === 0) {
+        state.rows = state.rows.filter(r => r.id !== row.id);
+        state.selectedRowId = null;
+        state.selectedSegIds = [];
+      } else {
+        state.selectedSegIds = [row.segments[0].id];
+      }
+      playSound('remove');
+      renderAll();
+    }
+
+    function deleteSelectedRow() {
+      if (!state.selectedRowId) return;
+      pushHistory();
+      state.rows = state.rows.filter(r => r.id !== state.selectedRowId);
+      state.selectedRowId = null;
+      state.selectedSegIds = [];
+      playSound('remove');
+      renderAll();
+    }
+
+    /**
+     * ============================================================================
+     * GLOBAL DISPLAY TOGGLES & SIZING MODE
+     * ============================================================================
+     */
+    function setSizingMode(mode) {
+      if (state.sizingMode === mode) return;
+      pushHistory();
+      state.sizingMode = mode;
+      playSound('click');
+      renderAll();
+      showToast(mode === 'proportional' ? 'Proportional Auto-Sizing enabled' : 'Manual Drag Resize enabled');
+    }
+
+    function toggleFlag(flagName) {
+      state[flagName] = !state[flagName];
+      playSound('click');
+      renderAll();
+    }
+
+    function setAllHidden(hiddenState) {
+      pushHistory();
+      state.rows.forEach(r => r.segments.forEach(s => (s.hidden = hiddenState)));
+      playSound('click');
+      renderAll();
+    }
+
+    function hideWholeRow() {
+      if (state.rows.length === 0) return;
+      pushHistory();
+      state.rows[0].segments.forEach(s => (s.hidden = true));
+      playSound('click');
+      renderAll();
+    }
+
+    function clearBoard() {
+      pushHistory();
+      state.rows = [];
+      state.selectedRowId = null;
+      state.selectedSegIds = [];
+      clearInk();
+      playSound('remove');
+      renderAll();
+      showToast('Canvas cleared');
+    }
+
+    /**
+     * ============================================================================
+     * INTERACTIVE DRAG-RESIZING (Segment Dividers & End-of-Row Handles)
+     * ============================================================================
+     */
+    let dragResizeState = null;
+
+    function startDividerResize(event, rowId, leftSegIdx) {
+      event.stopPropagation();
+      event.preventDefault();
+      const row = state.rows.find(r => r.id === rowId);
+      const rowTrack = document.getElementById(`track-${rowId}`);
+      if (!row || !rowTrack) return;
+
+      pushHistory();
+      const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+      const trackRect = rowTrack.getBoundingClientRect();
+
+      dragResizeState = {
+        type: 'divider',
+        row,
+        leftSegIdx,
+        startX: clientX,
+        trackWidth: trackRect.width,
+        initialWeights: row.segments.map(s => s.weight)
+      };
+
+      window.addEventListener('mousemove', onDragResizeMove);
+      window.addEventListener('mouseup', onDragResizeEnd);
+      window.addEventListener('touchmove', onDragResizeMove, { passive: false });
+      window.addEventListener('touchend', onDragResizeEnd);
+    }
+
+    function startRowEndResize(event, rowId) {
+      event.stopPropagation();
+      event.preventDefault();
+      const row = state.rows.find(r => r.id === rowId);
+      const container = document.getElementById('barsContainer');
+      if (!row || !container) return;
+
+      pushHistory();
+      const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+      const containerRect = container.getBoundingClientRect();
+      const labelOffset = state.showRowLabels ? 116 : 0;
+      const maxTrackWidth = Math.max(200, containerRect.width - labelOffset);
+
+      dragResizeState = {
+        type: 'rowEnd',
+        row,
+        startX: clientX,
+        maxTrackWidth,
+        initialPct: row.manualWidthPct || 100
+      };
+
+      window.addEventListener('mousemove', onDragResizeMove);
+      window.addEventListener('mouseup', onDragResizeEnd);
+      window.addEventListener('touchmove', onDragResizeMove, { passive: false });
+      window.addEventListener('touchend', onDragResizeEnd);
+    }
+
+    function onDragResizeMove(event) {
+      if (!dragResizeState) return;
+      if (event.cancelable) event.preventDefault();
+      const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+      const deltaX = clientX - dragResizeState.startX;
+
+      if (dragResizeState.type === 'divider') {
+        const { row, leftSegIdx, trackWidth, initialWeights } = dragResizeState;
+        const totalW = initialWeights.reduce((a, b) => a + b, 0);
+        const pairTotal = initialWeights[leftSegIdx] + initialWeights[leftSegIdx + 1];
+        const deltaWeight = (deltaX / trackWidth) * totalW;
+
+        const minW = totalW * 0.06;
+        let newLeft = initialWeights[leftSegIdx] + deltaWeight;
+        newLeft = Math.max(minW, Math.min(pairTotal - minW, newLeft));
+        const newRight = pairTotal - newLeft;
+
+        row.segments[leftSegIdx].weight = newLeft;
+        row.segments[leftSegIdx + 1].weight = newRight;
+        renderCanvasOnly();
+      } else if (dragResizeState.type === 'rowEnd') {
+        const { row, maxTrackWidth, initialPct } = dragResizeState;
+        const deltaPct = (deltaX / maxTrackWidth) * 100;
+        row.manualWidthPct = Math.max(15, Math.min(100, initialPct + deltaPct));
+        renderCanvasOnly();
+      }
+    }
+
+    function onDragResizeEnd() {
+      dragResizeState = null;
+      window.removeEventListener('mousemove', onDragResizeMove);
+      window.removeEventListener('mouseup', onDragResizeEnd);
+      window.removeEventListener('touchmove', onDragResizeMove);
+      window.removeEventListener('touchend', onDragResizeEnd);
+      renderAll();
+    }
+
+    /**
+     * ============================================================================
+     * RENDERING THE BAR MODEL WORKSPACE & INSPECTOR
+     * ============================================================================
+     */
+    function renderAll() {
+      updateToolbarStates();
+      renderCanvasOnly();
+      renderInspector();
+    }
+
+    function updateToolbarStates() {
+      // Sizing mode buttons
+      const btnProp = document.getElementById('btnModeProportional');
+      const btnMan = document.getElementById('btnModeManual');
+      if (state.sizingMode === 'proportional') {
+        btnProp.className = 'px-2.5 py-1 rounded-lg text-xs font-bold transition bg-sky-600 text-white';
+        btnMan.className = 'px-2.5 py-1 rounded-lg text-xs font-bold transition text-slate-600 hover:text-slate-900';
+      } else {
+        btnMan.className = 'px-2.5 py-1 rounded-lg text-xs font-bold transition bg-sky-600 text-white';
+        btnProp.className = 'px-2.5 py-1 rounded-lg text-xs font-bold transition text-slate-600 hover:text-slate-900';
+      }
+
+      // Active pill highlights for brackets & prompt
+      setPillActive('btnTopBrace', state.showTopBrace);
+      setPillActive('btnBottomBrace', state.showBottomBrace);
+      setPillActive('btnDiffBracket', state.showDiffBracket);
+      setPillActive('btnTogglePrompt', state.showPrompt);
+
+      // Word problem banner visibility
+      const banner = document.getElementById('wordProblemBanner');
+      banner.classList.toggle('hidden', !state.showPrompt);
+      document.getElementById('problemTextInput').value = state.problemText;
+
+      // Row labels toggle text
+      const lblBtn = document.getElementById('btnToggleRowLabels');
+      if (lblBtn) lblBtn.textContent = state.showRowLabels ? 'Visible' : 'Hidden';
+    }
+
+    function setPillActive(id, isActive) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (isActive) {
+        el.classList.add('bg-slate-800', 'text-white', 'border-slate-800');
+        el.classList.remove('bg-white', 'text-slate-700', 'border-slate-300');
+      } else {
+        el.classList.remove('bg-slate-800', 'text-white', 'border-slate-800');
+        el.classList.add('bg-white', 'text-slate-700', 'border-slate-300');
+      }
+    }
+
+    function buildCurlyBraceSVG(labelText, isTop = true) {
+      // Crisp scalable horizontal curly bracket SVG
+      const d = isTop
+        ? 'M 2 22 C 2 12, 12 12, 24 12 L 48 12 C 49.5 12, 50 7, 50 3 C 50 7, 50.5 12, 52 12 L 76 12 C 88 12, 98 12, 98 22'
+        : 'M 2 2 C 2 12, 12 12, 24 12 L 48 12 C 49.5 12, 50 17, 50 21 C 50 17, 50.5 12, 52 12 L 76 12 C 88 12, 98 12, 98 2';
+
+      return `
+        <div class="w-full flex flex-col items-center select-none">
+          ${isTop ? `<span class="px-2.5 py-0.5 mb-0.5 rounded-full bg-slate-800 text-white text-xs sm:text-sm font-extrabold shadow-2xs">${escapeHtml(labelText)}</span>` : ''}
+          <svg viewBox="0 0 100 24" preserveAspectRatio="none" class="w-full h-5 overflow-visible">
+            <path d="${d}" fill="none" stroke="#334155" stroke-width="2.2" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+          </svg>
+          ${!isTop ? `<span class="px-2.5 py-0.5 mt-0.5 rounded-full bg-slate-800 text-white text-xs sm:text-sm font-extrabold shadow-2xs">${escapeHtml(labelText)}</span>` : ''}
+        </div>
+      `;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function renderCanvasOnly() {
+      const container = document.getElementById('barsContainer');
+      container.innerHTML = '';
+
+      if (state.rows.length === 0) {
+        container.innerHTML = `
+          <div class="py-16 text-center text-slate-400 flex flex-col items-center gap-2">
+            <div class="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-2xl font-black text-slate-300">+</div>
+            <p class="font-bold text-slate-600">Your Bar Model canvas is empty</p>
+            <p class="text-xs">Click <strong>+ Add Bar Row</strong> below or choose a template at the top to begin.</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Compute row widths in Proportional mode vs Manual mode
+      const rowTotals = state.rows.map(r => getRowTotalNumeric(r));
+      const maxNumericTotal = Math.max(...rowTotals.filter(v => v !== null), 0);
+
+      const computedWidthsPct = state.rows.map((row, idx) => {
+        if (state.sizingMode === 'manual') {
+          return row.manualWidthPct || 100;
+        }
+        const tot = rowTotals[idx];
+        if (tot !== null && maxNumericTotal > 0) {
+          return Math.max(12, (tot / maxNumericTotal) * 100);
+        }
+        return row.manualWidthPct || 100;
+      });
+
+      // Compute brace text from row totals
+      const topTotalVal = rowTotals[0];
+      const topHidden = state.rows[0].segments.some(s => s.hidden);
+      const topBraceLabel = topHidden ? '?' : (topTotalVal !== null ? Number(topTotalVal.toFixed(3)) : '?');
+
+      const bottomIdx = state.rows.length - 1;
+      const bottomTotalVal = rowTotals[bottomIdx];
+      const bottomHidden = state.rows[bottomIdx].segments.some(s => s.hidden);
+      const bottomBraceLabel = bottomHidden ? '?' : (bottomTotalVal !== null ? Number(bottomTotalVal.toFixed(3)) : '?');
+
+      // 1. Optional Top Curly Brace
+      if (state.showTopBrace) {
+        const braceRow = document.createElement('div');
+        braceRow.className = 'flex items-end w-full';
+        braceRow.innerHTML = `
+          ${state.showRowLabels ? '<div class="w-24 sm:w-28 shrink-0"></div>' : ''}
+          <div class="flex-1">
+            <div style="width: ${computedWidthsPct[0]}%;">
+              ${buildCurlyBraceSVG(topBraceLabel, true)}
+            </div>
+          </div>
+        `;
+        container.appendChild(braceRow);
+      }
+
+      // 2. Render Each Bar Row
+      state.rows.forEach((row, rIdx) => {
+        const rowWrapper = document.createElement('div');
+        rowWrapper.className = 'flex items-center w-full group';
+
+        // Left Row Title Column
+        if (state.showRowLabels) {
+          const titleDiv = document.createElement('div');
+          titleDiv.className = 'w-24 sm:w-28 pr-3 shrink-0 text-right';
+          titleDiv.innerHTML = `
+            <span class="text-xs sm:text-sm font-extrabold text-slate-700 break-words leading-tight">
+              ${escapeHtml(row.title)}
+            </span>
+          `;
+          rowWrapper.appendChild(titleDiv);
+        }
+
+        // Bar Track Area
+        const trackOuter = document.createElement('div');
+        trackOuter.className = 'flex-1 relative flex items-center';
+
+        const barTrack = document.createElement('div');
+        barTrack.id = `track-${row.id}`;
+        barTrack.style.width = `${computedWidthsPct[rIdx]}%`;
+        barTrack.className = 'relative flex items-stretch min-h-[68px] sm:min-h-[76px] rounded-xl shadow-xs transition-[width] duration-150';
+
+        // Calculate weights inside this row
+        const segWeights = row.segments.map(s => {
+          if (state.sizingMode === 'proportional') {
+            const parsed = parseNumericValue(s.value);
+            return parsed !== null ? parsed : s.weight;
+          }
+          return s.weight;
+        });
+        const totalRowWeight = segWeights.reduce((a, b) => a + b, 0) || 1;
+
+        row.segments.forEach((seg, sIdx) => {
+          const swatch = getSwatch(seg.color);
+          const isSelected = state.selectedRowId === row.id && state.selectedSegIds.includes(seg.id);
+          const segWidthPct = (segWeights[sIdx] / totalRowWeight) * 100;
+
+          const segDiv = document.createElement('div');
+          segDiv.style.width = `${segWidthPct}%`;
+          segDiv.style.backgroundColor = swatch.bg;
+          segDiv.style.color = swatch.text;
+          segDiv.style.borderColor = swatch.border;
+
+          const roundingClass =
+            row.segments.length === 1
+              ? 'rounded-xl'
+              : sIdx === 0
+              ? 'rounded-l-xl'
+              : sIdx === row.segments.length - 1
+              ? 'rounded-r-xl'
+              : '';
+
+          segDiv.className = `bar-segment ${roundingClass} ${isSelected ? 'is-selected' : ''} border-2 ${sIdx > 0 ? '-ml-[2px]' : ''} flex flex-col items-center justify-center px-1.5 py-2 cursor-pointer overflow-hidden`;
+          segDiv.onclick = (e) => selectSegment(e, row.id, seg.id);
+
+          // Subtraction Diagonal Hatching Overlay
+          if (seg.hatched) {
+            const hatch = document.createElement('div');
+            hatch.className = 'absolute inset-0 hatch-overlay pointer-events-none';
+            segDiv.appendChild(hatch);
+          }
+
+          // Display Value (or ? if hidden)
+          const displayVal = seg.hidden ? '?' : (seg.value || '');
+          const valSpan = document.createElement('div');
+          valSpan.className = `relative z-10 font-black tracking-tight text-center leading-tight truncate max-w-full ${
+            seg.hidden ? 'text-xl sm:text-2xl px-2 py-0.5 rounded-lg bg-black/15' : 'text-base sm:text-xl'
+          }`;
+          valSpan.textContent = displayVal;
+          segDiv.appendChild(valSpan);
+
+          // Optional Part Sub-label
+          if (seg.label) {
+            const lblSpan = document.createElement('div');
+            lblSpan.className = 'relative z-10 text-[10px] sm:text-xs font-bold opacity-90 truncate max-w-full mt-0.5';
+            lblSpan.textContent = seg.label;
+            segDiv.appendChild(lblSpan);
+          }
+
+          // Add draggable divider handle on right edge of segment (except last segment)
+          if (sIdx < row.segments.length - 1) {
+            const divHandle = document.createElement('div');
+            divHandle.className = 'resize-handle no-print';
+            divHandle.style.right = '-7px';
+            divHandle.title = 'Drag to resize part proportions';
+            divHandle.onmousedown = (e) => startDividerResize(e, row.id, sIdx);
+            divHandle.ontouchstart = (e) => startDividerResize(e, row.id, sIdx);
+            divHandle.onclick = (e) => e.stopPropagation();
+            segDiv.appendChild(divHandle);
+          }
+
+          barTrack.appendChild(segDiv);
+        });
+
+        // Add End-of-Row Drag Handle for Manual Resizing
+        const endHandle = document.createElement('div');
+        endHandle.className = 'row-end-handle no-print';
+        endHandle.title = 'Drag right edge to resize bar length';
+        endHandle.onmousedown = (e) => startRowEndResize(e, row.id);
+        endHandle.ontouchstart = (e) => startRowEndResize(e, row.id);
+        endHandle.onclick = (e) => e.stopPropagation();
+        barTrack.appendChild(endHandle);
+
+        trackOuter.appendChild(barTrack);
+
+        // 3. Difference Bracket Indicator (Comparison Mode between Row 0 and Row 1)
+        if (state.showDiffBracket && state.rows.length >= 2 && rIdx === 1) {
+          const w0 = computedWidthsPct[0];
+          const w1 = computedWidthsPct[1];
+          const diffPct = Math.abs(w0 - w1);
+          const startPct = Math.min(w0, w1);
+
+          if (diffPct > 1.5) {
+            const n0 = rowTotals[0];
+            const n1 = rowTotals[1];
+            const anyHidden = state.rows[0].segments.some(s => s.hidden) || state.rows[1].segments.some(s => s.hidden);
+            let diffLabel = '?';
+            if (!anyHidden && n0 !== null && n1 !== null) {
+              diffLabel = Number(Math.abs(n0 - n1).toFixed(3));
+            }
+
+            const diffOverlay = document.createElement('div');
+            diffOverlay.style.left = `${startPct}%`;
+            diffOverlay.style.width = `${diffPct}%`;
+            diffOverlay.className = 'absolute inset-y-0 border-2 border-dashed border-rose-500 bg-rose-500/10 rounded-r-xl flex items-center justify-center pointer-events-none';
+            diffOverlay.innerHTML = `
+              <span class="px-2 py-0.5 rounded-full bg-rose-600 text-white text-xs font-extrabold shadow-xs">
+                Diff: ${diffLabel}
+              </span>
+            `;
+            trackOuter.appendChild(diffOverlay);
+          }
+        }
+
+        rowWrapper.appendChild(trackOuter);
+        container.appendChild(rowWrapper);
+      });
+
+      // 4. Optional Bottom Curly Brace
+      if (state.showBottomBrace && state.rows.length > 0) {
+        const braceRow = document.createElement('div');
+        braceRow.className = 'flex items-start w-full';
+        braceRow.innerHTML = `
+          ${state.showRowLabels ? '<div class="w-24 sm:w-28 shrink-0"></div>' : ''}
+          <div class="flex-1">
+            <div style="width: ${computedWidthsPct[bottomIdx]}%;">
+              ${buildCurlyBraceSVG(bottomBraceLabel, false)}
+            </div>
+          </div>
+        `;
+        container.appendChild(braceRow);
+      }
+    }
+
+    /**
+     * Render Bottom Contextual Inspector Dock
+     */
+    function renderInspector() {
+      const emptyEl = document.getElementById('inspectorEmpty');
+      const activeEl = document.getElementById('inspectorActive');
+      const sel = getPrimarySelected();
+
+      if (!sel) {
+        emptyEl.classList.remove('hidden');
+        emptyEl.classList.add('flex');
+        activeEl.classList.add('hidden');
+        activeEl.classList.remove('flex');
+        return;
+      }
+
+      emptyEl.classList.add('hidden');
+      emptyEl.classList.remove('flex');
+      activeEl.classList.remove('hidden');
+      activeEl.classList.add('flex');
+
+      const { row, seg } = sel;
+      document.getElementById('inputSegValue').value = seg.value;
+      document.getElementById('inputSegLabel').value = seg.label;
+      document.getElementById('inputRowTitle').value = row.title;
+
+      // Eye icon state
+      document.getElementById('segEyeOpen').classList.toggle('hidden', seg.hidden);
+      document.getElementById('segEyeClosed').classList.toggle('hidden', !seg.hidden);
+
+      // Merge button visibility (when 2+ adjacent segments are selected)
+      const mergeBtn = document.getElementById('btnMergeSegments');
+      if (state.selectedSegIds.length >= 2) {
+        mergeBtn.classList.remove('hidden');
+        mergeBtn.textContent = `Merge (${state.selectedSegIds.length})`;
+      } else {
+        mergeBtn.classList.add('hidden');
+      }
+
+      // Render Swatches + Subtraction Hatch Toggle
+      const swatchBox = document.getElementById('swatchContainer');
+      swatchBox.innerHTML = '';
+
+      SWATCHES.forEach(sw => {
+        const isCurrent = seg.color === sw.id;
+        const btn = document.createElement('button');
+        btn.style.backgroundColor = sw.bg;
+        btn.style.borderColor = sw.border;
+        btn.title = sw.name;
+        btn.className = `w-7 h-7 rounded-lg border-2 transition cursor-pointer ${
+          isCurrent ? 'ring-2 ring-offset-2 ring-slate-900 scale-110' : 'hover:scale-105'
+        }`;
+        btn.onclick = () => setSelectedColor(sw.id);
+        swatchBox.appendChild(btn);
+      });
+
+      // Cross-out / Subtraction Hatch button
+      const hatchBtn = document.createElement('button');
+      hatchBtn.onclick = toggleSelectedHatched;
+      hatchBtn.title = 'Toggle diagonal cross-out hatching for subtraction / take-away';
+      hatchBtn.className = `ml-1.5 px-2.5 h-7 rounded-lg border text-xs font-bold flex items-center gap-1 transition cursor-pointer ${
+        seg.hatched
+          ? 'bg-slate-800 text-white border-slate-800'
+          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-300'
+      }`;
+      hatchBtn.innerHTML = `<span>╱╱ Cross Out</span>`;
+      swatchBox.appendChild(hatchBtn);
+    }
+
+    /**
+     * ============================================================================
+     * WHITEBOARD PEN & ERASER OVERLAY CANVAS
+     * ============================================================================
+     */
+    const inkCanvas = document.getElementById('inkCanvas');
+    const inkCtx = inkCanvas.getContext('2d');
+    let isDrawingInk = false;
+
+    function resizeInkCanvas() {
+      const card = document.getElementById('workspaceCard');
+      if (!card || !inkCanvas) return;
+      // Preserve existing ink across resize
+      const temp = document.createElement('canvas');
+      temp.width = inkCanvas.width;
+      temp.height = inkCanvas.height;
+      if (temp.width > 0 && temp.height > 0) {
+        temp.getContext('2d').drawImage(inkCanvas, 0, 0);
+      }
+
+      const rect = card.getBoundingClientRect();
+      inkCanvas.width = rect.width;
+      inkCanvas.height = rect.height;
+
+      if (temp.width > 0 && temp.height > 0) {
+        inkCtx.drawImage(temp, 0, 0);
+      }
+    }
+
+    function togglePenMode() {
+      state.penMode = !state.penMode;
+      state.penEraser = false;
+
+      const btn = document.getElementById('btnPenTool');
+      const label = document.getElementById('penBtnLabel');
+      const palette = document.getElementById('penPalette');
+      const banner = document.getElementById('penModeBanner');
+
+      if (state.penMode) {
+        inkCanvas.classList.remove('pointer-events-none');
+        inkCanvas.style.cursor = 'crosshair';
+        btn.classList.add('bg-rose-600', 'text-white');
+        btn.classList.remove('text-slate-700', 'hover:bg-slate-100');
+        label.textContent = 'Pen On';
+        palette.classList.remove('hidden');
+        palette.classList.add('flex');
+        banner.classList.remove('hidden');
+      } else {
+        inkCanvas.classList.add('pointer-events-none');
+        btn.classList.remove('bg-rose-600', 'text-white');
+        btn.classList.add('text-slate-700', 'hover:bg-slate-100');
+        label.textContent = 'Pen Off';
+        palette.classList.add('hidden');
+        palette.classList.remove('flex');
+        banner.classList.add('hidden');
+      }
+      playSound('click');
+    }
+
+    function setPenColor(hex) {
+      state.penColor = hex;
+      state.penEraser = false;
+      document.getElementById('btnPenEraser').classList.remove('bg-slate-800', 'text-white');
+      playSound('click');
+    }
+
+    function toggleEraser() {
+      state.penEraser = !state.penEraser;
+      const btn = document.getElementById('btnPenEraser');
+      btn.classList.toggle('bg-slate-800', state.penEraser);
+      btn.classList.toggle('text-white', state.penEraser);
+      playSound('click');
+    }
+
+    function clearInk() {
+      inkCtx.clearRect(0, 0, inkCanvas.width, inkCanvas.height);
+      playSound('remove');
+    }
+
+    function getCanvasCoords(e) {
+      const rect = inkCanvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: clientX - rect.left,
+        y: clientY - rect.top
+      };
+    }
+
+    inkCanvas.addEventListener('mousedown', (e) => {
+      if (!state.penMode) return;
+      isDrawingInk = true;
+      const { x, y } = getCanvasCoords(e);
+      inkCtx.beginPath();
+      inkCtx.moveTo(x, y);
+    });
+
+    inkCanvas.addEventListener('mousemove', (e) => {
+      if (!isDrawingInk || !state.penMode) return;
+      const { x, y } = getCanvasCoords(e);
+      inkCtx.lineCap = 'round';
+      inkCtx.lineJoin = 'round';
+      if (state.penEraser) {
+        inkCtx.globalCompositeOperation = 'destination-out';
+        inkCtx.lineWidth = 22;
+      } else {
+        inkCtx.globalCompositeOperation = 'source-over';
+        inkCtx.strokeStyle = state.penColor;
+        inkCtx.lineWidth = 3.5;
+      }
+      inkCtx.lineTo(x, y);
+      inkCtx.stroke();
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDrawingInk = false;
+    });
+
+    inkCanvas.addEventListener('touchstart', (e) => {
+      if (!state.penMode) return;
+      e.preventDefault();
+      isDrawingInk = true;
+      const { x, y } = getCanvasCoords(e);
+      inkCtx.beginPath();
+      inkCtx.moveTo(x, y);
+    }, { passive: false });
+
+    inkCanvas.addEventListener('touchmove', (e) => {
+      if (!isDrawingInk || !state.penMode) return;
+      e.preventDefault();
+      const { x, y } = getCanvasCoords(e);
+      inkCtx.lineCap = 'round';
+      inkCtx.lineJoin = 'round';
+      if (state.penEraser) {
+        inkCtx.globalCompositeOperation = 'destination-out';
+        inkCtx.lineWidth = 22;
+      } else {
+        inkCtx.globalCompositeOperation = 'source-over';
+        inkCtx.strokeStyle = state.penColor;
+        inkCtx.lineWidth = 3.5;
+      }
+      inkCtx.lineTo(x, y);
+      inkCtx.stroke();
+    }, { passive: false });
+
+    inkCanvas.addEventListener('touchend', () => {
+      isDrawingInk = false;
+    });
+
+    /**
+     * ============================================================================
+     * EXPORT CLEAN PNG SNAPSHOT OF THE BAR MODEL
+     * ============================================================================
+     */
+    function exportSnapshot() {
+      try {
+        const exportCanvas = document.createElement('canvas');
+        const width = 1200;
+        const height = Math.max(420, 170 + state.rows.length * 115);
+        exportCanvas.width = width;
+        exportCanvas.height = height;
+        const ctx = exportCanvas.getContext('2d');
+
+        // White background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+
+        // Word problem header if visible
+        let cursorY = 42;
+        if (state.showPrompt && state.problemText.trim()) {
+          ctx.fillStyle = '#fef3c7';
+          ctx.fillRect(40, 20, width - 80, 48);
+          ctx.fillStyle = '#1e293b';
+          ctx.font = 'bold 16px Inter, sans-serif';
+          ctx.fillText(state.problemText.slice(0, 115), 56, 50);
+          cursorY = 98;
+        }
+
+        const labelColW = state.showRowLabels ? 140 : 40;
+        const trackMaxW = width - labelColW - 60;
+
+        const rowTotals = state.rows.map(r => getRowTotalNumeric(r));
+        const maxNum = Math.max(...rowTotals.filter(v => v !== null), 0);
+
+        state.rows.forEach((row, rIdx) => {
+          const rowPct =
+            state.sizingMode === 'manual'
+              ? (row.manualWidthPct || 100) / 100
+              : rowTotals[rIdx] !== null && maxNum > 0
+              ? Math.max(0.12, rowTotals[rIdx] / maxNum)
+              : (row.manualWidthPct || 100) / 100;
+
+          const rowPixelW = trackMaxW * rowPct;
+          const rowH = 74;
+
+          if (state.showRowLabels) {
+            ctx.fillStyle = '#334155';
+            ctx.font = 'bold 16px Inter, sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(row.title, labelColW - 16, cursorY + 43);
+          }
+
+          const segWeights = row.segments.map(s => {
+            const p = parseNumericValue(s.value);
+            return state.sizingMode === 'proportional' && p !== null ? p : s.weight;
+          });
+          const totalW = segWeights.reduce((a, b) => a + b, 0) || 1;
+
+          let cursorX = labelColW;
+          row.segments.forEach((seg, sIdx) => {
+            const sw = getSwatch(seg.color);
+            const segW = (segWeights[sIdx] / totalW) * rowPixelW;
+
+            ctx.fillStyle = sw.bg;
+            ctx.fillRect(cursorX, cursorY, segW, rowH);
+
+            ctx.strokeStyle = sw.border;
+            ctx.lineWidth = 2.5;
+            ctx.strokeRect(cursorX, cursorY, segW, rowH);
+
+            ctx.fillStyle = sw.text;
+            ctx.textAlign = 'center';
+            ctx.font = '800 20px Inter, sans-serif';
+            const txt = seg.hidden ? '?' : seg.value;
+            ctx.fillText(txt, cursorX + segW / 2, seg.label ? cursorY + 34 : cursorY + 44);
+
+            if (seg.label) {
+              ctx.font = '600 13px Inter, sans-serif';
+              ctx.fillText(seg.label, cursorX + segW / 2, cursorY + 56);
+            }
+
+            cursorX += segW;
+          });
+
+          cursorY += 98;
+        });
+
+        // Composite whiteboard ink overlay if present
+        if (inkCanvas.width > 0 && inkCanvas.height > 0) {
+          ctx.drawImage(inkCanvas, 0, 0, width, height);
+        }
+
+        const link = document.createElement('a');
+        link.download = 'bar-model.png';
+        link.href = exportCanvas.toDataURL('image/png');
+        link.click();
+        showToast('Downloaded bar-model.png snapshot');
+      } catch (err) {
+        showToast('Snapshot ready — use Print button if blocked by browser');
+      }
+    }
+
+    /**
+     * ============================================================================
+     * KEYBOARD SHORTCUTS & TOAST HELPER
+     * ============================================================================
+     */
+    window.addEventListener('keydown', (e) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+      } else if (e.key === 'Backspace' || e.key === 'Delete') {
+        if (state.selectedSegIds.length > 0) {
+          e.preventDefault();
+          deleteSelectedSegment();
+        }
+      }
+    });
+
+    let toastTimer = null;
+    function showToast(msg) {
+      const toast = document.getElementById('toastBanner');
+      toast.textContent = msg;
+      toast.classList.remove('opacity-0');
+      toast.classList.add('opacity-100');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
+      }, 2400);
+    }
+
+    // Boot Application
+    window.addEventListener('DOMContentLoaded', () => {
+      loadTemplate('partWhole', true);
+      resizeInkCanvas();
+    });
+
+    window.addEventListener('resize', resizeInkCanvas);
+  </script>
+</body>
+</html>
